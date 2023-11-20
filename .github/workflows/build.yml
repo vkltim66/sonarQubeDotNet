@@ -1,51 +1,28 @@
-name: Main Build 
-
+name: SonarCloud
 on:
   push:
     branches:
       - master
-
+  pull_request:
+    types: [opened, synchronize, reopened]
 jobs:
   build:
-    name: Build
-    runs-on: self-hosted
+    name: Build and analyze
+    runs-on: ubuntu-latest
+    env:
+      BUILD_WRAPPER_OUT_DIR: build_wrapper_output_directory # Directory where build-wrapper output will be placed
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v1
-        with:
-          java-version: 17
-
-      - name: Cache SonarQube packages
-        uses: actions/cache@v2  # Use actions/cache@v2 instead of @v1
-        with:
-          path: ~\sonar\cache  # Correct the path
-          key: ${{ runner.os }}-sonar
-          restore-keys: ${{ runner.os }}-sonar
-
-      - name: Cache SonarQube scanner
-        id: cache-sonar-scanner
-        uses: actions/cache@v2  # Use actions/cache@v2 instead of @v1
-        with:
-          path: .sonar\scanner  # Correct the path
-          key: ${{ runner.os }}-sonar-scanner
-          restore-keys: ${{ runner.os }}-sonar-scanner
-
-      - name: Install SonarQube scanner
-        if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
+      - name: Install sonar-scanner and build-wrapper
+        uses: SonarSource/sonarcloud-github-c-cpp@v2
+      - name: Run build-wrapper
         run: |
-          mkdir .sonar\scanner  # Create the directory
-          dotnet tool update dotnet-sonarscanner --tool-path .sonar\scanner  # Correct the path
-
-      - name: Build and analyze
+          build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }}<insert_your_clean_build_command>
+      - name: Run sonar-scanner
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          cd C:\actions-runner\_work\sonarQubeDotNet\sonarQubeDotNet
-          .sonar\scanner\dotnet-sonarscanner begin /k:"SergioAVega_sonarQubeDotNet_AYuRTcoeMv0giqkxllET" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="${{ secrets.SONAR_HOST_URL }}"
-          dotnet build eShopOnWeb.sln
-          .sonar\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
-#      - name: JSON Report
-#        run: curl.exe -u your-sonar-token:"${{ secrets.SONAR_TOKEN }}"  GET "http://localhost:9000/api/issues/search?componentKeys=SergioAVega_sonarQubeDotNet_AYuRTcoeMv0giqkxllET" -o sonarqube_report.json
+          sonar-scanner --define sonar.cfamily.build-wrapper-output="${{ env.BUILD_WRAPPER_OUT_DIR }}"
